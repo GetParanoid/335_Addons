@@ -6,23 +6,32 @@ GitHub: https://github.com/GetParanoid/335_Addons
 
 
 -- SETTINGS ----------------------------------------------------------------
-local CHAT_CHANNEL     = "SAY"     -- "SAY", "PARTY", "RAID", "YELL", etc.
+
+-- The single chat channel used for every broadcast (only one channel at a time).
+-- Valid values: "SAY", "YELL", "PARTY", "RAID", "GUILD", "OFFICER", etc.
+local CHAT_CHANNEL     = "SAY"
+
 local MESSAGE_DURATION = 3         -- seconds to display the on-screen message
 local FONT_SIZE        = 96
 local FONT_PATH        = "Interface\\AddOns\\OutOfMana\\Fonts\\ARIALN.ttf"
 local FRAME_COLOR      = {0, 0, 0, 0}
 local FONT_COLOR       = {1, 1, 1, 1}
 
--- Thresholds checked in order (highest first). When mana drops across one,
--- its message fires once until mana recovers above it.
+-- Mana thresholds, checked in order (highest first). When mana drops across
+-- one, its message fires once and won't fire again until mana recovers above
+-- that threshold.
 local THRESHOLDS = {
     { pct = 0.30, msg = "--- LOW ON MANA ---"       },
     { pct = 0.15, msg = "--- CRITICAL LOW MANA ---" },
     { pct = 0.05, msg = "--- OUT OF MANA ---"       },
 }
 
--- Instance types where messages should also be broadcast to chat.
--- Outside these contexts the on-screen message still shows, but nothing is sent.
+-- Whether to broadcast to chat in each instance type. The on-screen message
+-- always shows; this only gates the SendChatMessage call.
+--   true  = also send the message to CHAT_CHANNEL above
+--   false = on-screen only, stay silent in chat
+-- i.e "party = true" means if you're in a party instance (5-man dungeons), the message will be sent.
+--     "raid = false" means if you're in a raid instance, the message will not be sent.
 local BROADCAST_IN = {
     none  = false, -- open world
     party = true,  -- 5-man dungeons
