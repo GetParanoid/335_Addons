@@ -1,7 +1,11 @@
 ## Interface: 30300
-## Title: [ |cFFFFFFFFGP|r ] |cFF11A6ECOutOfMana|r |cFF7FFF7Fv1.0.0 (Beta)|r
+## Title: [ |cFFFFFFFFGP|r ] |cFF11A6ECOutOfMana|r |cFF7FFF7Fv1.1.0|r
 ## Author: GetParanoid
-## Version: 1.0
+## Version: 1.1
 ## Notes: |cFF11A6ECOutOfMana|r is a simple Out of Mana announcer addon.
+## X-Category: GP
+## Dependencies: GP_Lib
+## SavedVariables: OutOfManaDB
 
 OutOfMana.lua
+OutOfMana_Config.lua
