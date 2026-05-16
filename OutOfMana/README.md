@@ -4,22 +4,29 @@ A simple Out of Mana announcer addon for WoW 3.3.5 (Wrath of the Lich King).
 
 ## What it does
 
-Watches your mana and announces when it drops past key thresholds:
+Watches your mana and fires an alert each time it crosses a threshold. Each alert shows as a large on-screen message and can optionally broadcast to chat so your group knows you're running dry.
 
-- **30%** — `--- LOW ON MANA ---`
-- **15%** — `--- CRITICAL LOW MANA ---`
-- **5%**  — `--- OUT OF MANA ---`
+Default thresholds:
 
-Each alert shows as a large on-screen message and, in configured instance types (5-man dungeons by default), is also broadcast to chat so your group knows you're running dry.
+| % | Message |
+|---|---------|
+| 30% | `--- LOW ON MANA ---` |
+| 15% | `--- CRITICAL LOW MANA ---` |
+| 5%  | `--- OUT OF MANA ---` |
 
 ## Configuration
 
-Edit the `SETTINGS` block at the top of `OutOfMana.lua` to change:
+Type `/oom` in-game to open the settings window. Everything is configurable without touching any files:
 
-- Chat channel (`SAY`, `PARTY`, `RAID`, ...)
-- Thresholds and messages
-- Which instance types broadcast to chat
+- **Chat Channel** — where warnings are broadcast (`SAY`, `PARTY`, `RAID`, ...)
+- **Message Duration** — how long the on-screen alert stays visible
+- **Font Size** — size of the on-screen text
+- **Broadcast In** — toggle chat broadcasts per instance type (open world, dungeon, raid, arena, battleground)
+- **Mana Thresholds** — percentage triggers and custom messages for all three alerts
 
 ## Installation
 
-Drop the `OutOfMana` folder into `Interface/AddOns/`.
+1. Install **GP_Lib** — drop the `GP_Lib` folder into `Interface/AddOns/`
+2. Install **OutOfMana** — drop the `OutOfMana` folder into `Interface/AddOns/`
+
+GP_Lib is a shared library used by my addons. OutOfMana will not load without it.
