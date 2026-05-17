@@ -8,6 +8,7 @@ local abs = math.abs
 --WoW API / Variables
 local CreateFrame = CreateFrame
 local GetTime = GetTime
+local GetSpellInfo = GetSpellInfo
 local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
 local FAILED = FAILED
@@ -153,7 +154,8 @@ function NP:Update_CastBar(frame, event, unit)
 
 		castBar.Icon.texture:SetTexture(texture)
 		castBar.Spark:Show()
-		castBar.Name:SetText(name)
+		local _, rank = GetSpellInfo(name)
+		castBar.Name:SetText((rank and rank ~= "") and (name.." ("..rank..")") or name)
 		castBar.Time:SetText()
 
 		castBar:Show()
@@ -203,7 +205,8 @@ function NP:Update_CastBar(frame, event, unit)
 				delta = 0
 			end
 
-			castBar.Name:SetText(name)
+			local _, rank = GetSpellInfo(name)
+			castBar.Name:SetText((rank and rank ~= "") and (name.." ("..rank..")") or name)
 			castBar.max = endTime - startTime
 			castBar.startTime = startTime
 			castBar.delay = castBar.delay + delta

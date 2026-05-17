@@ -6,6 +6,7 @@ local unpack = unpack
 local abs, min = math.abs, math.min
 --WoW API / Variables
 local CreateFrame = CreateFrame
+local GetSpellInfo = GetSpellInfo
 local UnitIsPlayer = UnitIsPlayer
 local UnitClass = UnitClass
 local UnitReaction = UnitReaction
@@ -347,8 +348,13 @@ function UF:PostCastStart(unit)
 
 	if unit == "vehicle" then unit = "player" end
 
+	local _, rank = GetSpellInfo(self.spellName)
+	local displayName = (rank and rank ~= "") and (self.spellName.." ("..rank..")") or self.spellName
+
 	if db.castbar.displayTarget and self.curTarget then
-		self.Text:SetText(self.spellName.." > "..self.curTarget)
+		self.Text:SetText(displayName.." > "..self.curTarget)
+	else
+		self.Text:SetText(displayName)
 	end
 
 	-- Get length of Time, then calculate available length for Text
