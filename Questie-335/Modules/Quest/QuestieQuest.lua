@@ -1671,7 +1671,7 @@ function QuestieQuest:GetAllLeaderBoardDetails(questId)
     for _, objective in pairs(questObjectives) do -- DO NOT MODIFY THE RETURNED TABLE
         -- TODO Move this to QuestEventHandler module or QuestieQuest:AcceptQuest( ) + QuestieQuest:UpdateQuest( ) (accept quest one required to register objectives without progress)
         -- TODO After ^^^ moving remove this function and use "QuestLogCache.GetQuest(questId).objectives -- DO NOT MODIFY THE RETURNED TABLE" in place of it.
-        QuestieAnnounce:ObjectiveChanged(questId, objective.text, objective.numFulfilled, objective.numRequired)
+        QuestieAnnounce:ObjectiveChanged(questId, objective.text, objective.numFulfilled, objective.numRequired, objective.type)
     end
 
     return questObjectives

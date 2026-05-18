@@ -87,18 +87,32 @@ _GetAnnounceMarker = function()
     end
 end
 
-function QuestieAnnounce:AnnounceObjectiveToChannel(questId, itemId, objectiveText, objectiveProgress, isProgressUpdate)
+function QuestieAnnounce:AnnounceObjectiveToChannel(questId, itemId, objectiveText, objectiveProgress, isProgressUpdate, objectiveType)
     local announceToggle = isProgressUpdate and Questie.db.profile.questAnnounceObjectiveProgress or Questie.db.profile.questAnnounceObjectives
     if _QuestieAnnounce:AnnounceEnabledAndPlayerInChannel() and announceToggle then
-        -- no hyperlink required here
-        local questLink = QuestieLink:GetQuestLinkStringById(questId);
+        local questLink = QuestieLink:GetQuestLinkStringById(questId)
 
         local objective
         if itemId then
             local itemLink = select(2, GetItemInfo(itemId))
-            objective = objectiveProgress.." "..itemLink
+            objective = objectiveProgress .. " " .. (itemLink or objectiveText)
+        elseif objectiveType == "item" then
+            local quest = QuestieDB.GetQuest(questId)
+            local foundItemLink
+            if quest and quest.ObjectiveData then
+                for _, objData in ipairs(quest.ObjectiveData) do
+                    if objData.Type == "item" then
+                        local name, itemLink = GetItemInfo(objData.Id)
+                        if name == objectiveText and itemLink then
+                            foundItemLink = itemLink
+                            break
+                        end
+                    end
+                end
+            end
+            objective = objectiveProgress .. " " .. (foundItemLink or objectiveText)
         else
-            objective = objectiveProgress.." "..objectiveText
+            objective = objectiveProgress .. " " .. objectiveText
         end
 
         local message = _GetAnnounceMarker() .. l10n("%s for %s!", objective, questLink)
@@ -156,7 +170,7 @@ local function _ClearObjectiveStateForQuest(questId)
     end
 end
 
-function QuestieAnnounce:ObjectiveChanged(questId, text, numFulfilled, numRequired)
+function QuestieAnnounce:ObjectiveChanged(questId, text, numFulfilled, numRequired, objectiveType)
     local objectiveStateKey = _GetObjectiveStateKey(questId, text, numRequired)
     local objectiveProgress = tostring(numFulfilled) .. "/" .. tostring(numRequired)
 
@@ -171,7 +185,7 @@ function QuestieAnnounce:ObjectiveChanged(questId, text, numFulfilled, numRequir
         if numFulfilled > 0 and Questie.db.profile.questAnnounceObjectiveProgress then
             if _announced_progress[objectiveStateKey] ~= numFulfilled then
                 _announced_progress[objectiveStateKey] = numFulfilled
-                QuestieAnnounce:AnnounceObjectiveToChannel(questId, nil, text, objectiveProgress, true)
+                QuestieAnnounce:AnnounceObjectiveToChannel(questId, nil, text, objectiveProgress, true, objectiveType)
             end
         end
     end
@@ -183,7 +197,7 @@ function QuestieAnnounce:ObjectiveChanged(questId, text, numFulfilled, numRequir
         _has_seen_incomplete[objectiveStateKey] = nil
         _has_sent_announce[objectiveStateKey] = true
         _announced_progress[objectiveStateKey] = numFulfilled
-        QuestieAnnounce:AnnounceObjectiveToChannel(questId, nil, text, objectiveProgress)
+        QuestieAnnounce:AnnounceObjectiveToChannel(questId, nil, text, objectiveProgress, false, objectiveType)
     end
 end
 
