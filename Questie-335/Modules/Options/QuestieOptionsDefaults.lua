@@ -101,7 +101,6 @@ function QuestieOptionsDefaults:Load()
             showQuestProgressFirst = false,
             trackerColorObjectives = 'minimal',
             trackerSortObjectives = 'byZone',
-            trackerbindSetTomTom = 'ctrlleft',
             trackerbindOpenQuestLog = 'left',
             trackerbindUntrack = "shiftleft",
             trackerSetpoint = "TOPLEFT",
@@ -118,6 +117,12 @@ function QuestieOptionsDefaults:Load()
             trackerBackdropColor = {r = 0, g = 0, b = 0, a = 1},
             trackerHeightRatio = 0.50,
             trackerWidthRatio = 0.20,
+
+            -- Arrow HUD settings
+            arrow = true,
+            arrowLocked = false,
+            arrowScale = 1.0,
+            arrowTextScale = 1.0,
 
             lowLevelStyle = 1, -- Questie.LOWLEVEL_NONE
             manualLevelOffset = 7,

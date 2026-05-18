@@ -20,8 +20,6 @@ local TrackerFadeTicker = QuestieLoader:ImportModule("TrackerFadeTicker")
 -------------------------
 ---@type QuestieLink
 local QuestieLink = QuestieLoader:ImportModule("QuestieLink")
----@type QuestieMap
-local QuestieMap = QuestieLoader:ImportModule("QuestieMap")
 ---@type QuestieCombatQueue
 local QuestieCombatQueue = QuestieLoader:ImportModule("QuestieCombatQueue")
 ---@type QuestieDB
@@ -1062,12 +1060,7 @@ TrackerLinePool.OnClickQuest = function(self, button)
         LibDropDown:CloseDropDownMenus()
     end
 
-    if TrackerUtils:IsBindTrue(Questie.db.profile.trackerbindSetTomTom, button) then
-        local spawn, zone, name = QuestieMap:GetNearestQuestSpawn(self.Quest)
-        if spawn then
-            TrackerUtils:SetTomTomTarget(name, zone, spawn[1], spawn[2])
-        end
-    elseif TrackerUtils:IsBindTrue(Questie.db.profile.trackerbindUntrack, button) then
+    if TrackerUtils:IsBindTrue(Questie.db.profile.trackerbindUntrack, button) then
         if (IsModifiedClick("CHATLINK") and ChatEdit_GetActiveWindow()) then
             ChatEdit_InsertLink(QuestieLink:GetQuestInsertString(self.Quest.level, self.Quest.name, self.Quest.Id))
         else

@@ -655,26 +655,6 @@ function QuestieOptions.tabs.tracker:Initialize()
                         end
                     },
                     Spacer_Dropdowns = QuestieOptionsUtils:Spacer(11.1),
-                    setTomTom = {
-                        type = "select",
-                        order = 12,
-                        values = _GetShortcuts(),
-                        style = 'dropdown',
-                        name = function() return l10n('Set |cFF54e33bTomTom|r Target') end,
-                        desc = function()
-                            if Questie.IsWotlk then
-                                return l10n('This shortcut will set the TomTom arrow to point to either an NPC or the first incomplete Quest Objective (if location data is available).\n\nNOTE: This will not work with Achievements.')
-                            else
-                                return l10n('This shortcut will set the TomTom arrow to point to either an NPC or the first incomplete Quest Objective (if location data is available).')
-                            end
-                        end,
-                        disabled = function() return not Questie.db.profile.trackerEnabled end,
-                        hidden = function() return not IsAddOnLoaded("TomTom") end,
-                        get = function() return Questie.db.profile.trackerbindSetTomTom end,
-                        set = function(_, key)
-                            Questie.db.profile.trackerbindSetTomTom = key
-                        end
-                    },
                     trackerSetpoint = {
                         type = "select",
                         order = 13,

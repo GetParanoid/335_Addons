@@ -77,6 +77,8 @@ local QuestieDBMIntegration = QuestieLoader:ImportModule("QuestieDBMIntegration"
 local TrackerQuestTimers = QuestieLoader:ImportModule("TrackerQuestTimers")
 ---@type QuestieCombatQueue
 local QuestieCombatQueue = QuestieLoader:ImportModule("QuestieCombatQueue")
+---@type QuestieArrow
+local QuestieArrow = QuestieLoader:ImportModule("QuestieArrow")
 ---@type QuestieSlash
 local QuestieSlash = QuestieLoader:ImportModule("QuestieSlash")
 ---@type QuestXP
@@ -325,6 +327,7 @@ QuestieInit.Stages[3] = function() -- run as a coroutine
     -- Initialize the tracker
     coYield()
     QuestieTracker.Initialize()
+    QuestieArrow:Initialize()
     Hooks:HookQuestLogTitle()
     QuestieCombatQueue.Initialize()
 

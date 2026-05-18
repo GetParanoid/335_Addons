@@ -99,25 +99,6 @@ function TrackerUtils:ShowQuestLog(quest)
     QuestLog_Update()
 end
 
----@param title string The name of the WayPoint
----@param zone number The zone ID number
----@param x number X coordinate
----@param y number Y coordinate
-function TrackerUtils:SetTomTomTarget(title, zone, x, y)
-    if TomTom and TomTom.AddWaypoint then
-        if Questie.db.char._tom_waypoint and TomTom.RemoveWaypoint then -- remove old waypoint
-            TomTom:RemoveWaypoint(Questie.db.char._tom_waypoint)
-        end
-        local uiMapId = ZoneDB:GetUiMapIdByAreaId(zone)
-
-        if QuestieCompat.Is335 then
-            Questie.db.char._tom_waypoint = QuestieCompat.TomTom_AddWaypoint(title, uiMapId, x, y)
-        else
-            Questie.db.char._tom_waypoint = TomTom:AddWaypoint(uiMapId, x / 100, y / 100, { title = title, crazy = true, from = "Questie" })
-        end
-    end
-end
-
 ---@param objective table The table provided by QuestieDB.GetQuest(questId).Objectives[objective]
 function TrackerUtils:ShowObjectiveOnMap(objective)
     local spawn, zone = QuestieMap:GetNearestSpawn(objective)

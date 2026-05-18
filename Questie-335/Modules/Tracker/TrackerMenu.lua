@@ -14,8 +14,6 @@ local TrackerUtils = QuestieLoader:ImportModule("TrackerUtils")
 -------------------------
 ---@type QuestieQuest
 local QuestieQuest = QuestieLoader:ImportModule("QuestieQuest")
----@type QuestieMap
-local QuestieMap = QuestieLoader:ImportModule("QuestieMap")
 ---@type QuestieLink
 local QuestieLink = QuestieLoader:ImportModule("QuestieLink")
 ---@type QuestieCombatQueue
@@ -59,24 +57,6 @@ TrackerMenu.addFocusOption = function(menu, quest, objective)
             end
         })
     end
-end
-
-TrackerMenu.addTomTomOption = function(menu, quest, objective)
-    tinsert(menu, {
-        text = l10n('Set |cFF54e33bTomTom|r Target'),
-        func = function()
-            LibDropDown:CloseDropDownMenus()
-
-            local spawn, zone, name = QuestieMap:GetNearestQuestSpawn(quest)
-            if (not spawn) and objective ~= nil then
-                spawn, zone, name = QuestieMap:GetNearestSpawn(objective)
-            end
-
-            if spawn then
-                TrackerUtils:SetTomTomTarget(name, zone, spawn[1], spawn[2])
-            end
-        end
-    })
 end
 
 TrackerMenu.minMaxQuestOption = function(menu, quest)
@@ -379,7 +359,6 @@ function TrackerMenu:GetMenuForQuest(quest)
         local objectiveMenu = {}
 
         TrackerMenu.addFocusOption(objectiveMenu, quest, objective)
-        TrackerMenu.addTomTomOption(objectiveMenu, nil, objective)
         TrackerMenu.addShowHideObjectivesOption(objectiveMenu, quest, objective)
         TrackerMenu.addShowObjectivesOnMapOption(objectiveMenu, quest, objective)
 
@@ -391,7 +370,6 @@ function TrackerMenu:GetMenuForQuest(quest)
             local objectiveMenu = {}
 
             TrackerMenu.addFocusOption(objectiveMenu, quest, objective)
-            TrackerMenu.addTomTomOption(objectiveMenu, nil, objective)
             TrackerMenu.addShowHideObjectivesOption(objectiveMenu, quest, objective)
             TrackerMenu.addShowObjectivesOnMapOption(objectiveMenu, quest, objective)
 
@@ -405,7 +383,6 @@ function TrackerMenu:GetMenuForQuest(quest)
 
     TrackerMenu.addObjectiveOption(menu, subMenu, quest)
     TrackerMenu.addFocusUnfocusOption(menu, quest)
-    TrackerMenu.addTomTomOption(menu, quest, nil)
     TrackerMenu.minMaxQuestOption(menu, quest)
     TrackerMenu.addShowHideQuestsOption(menu, quest)
     TrackerMenu.addShowFinisherOnMapOption(menu, quest)
