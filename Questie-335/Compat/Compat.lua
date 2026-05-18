@@ -1407,13 +1407,7 @@ end
 -- This function will do its utmost to retrieve some sort of valid position
 -- for the player, including changing the current map zoom (if needed)
 -- https://wowpedia.fandom.com/wiki/API_C_Map.GetPlayerMapPosition?oldid=2167175
-function QuestieCompat.GetCurrentPlayerPosition()
-    local contextKey = GetPlayerPositionCacheContextKey()
-    local cachedUiMapID, cachedX, cachedY = TryGetCachedPlayerPosition(playerPositionCache, PLAYER_POSITION_CACHE_TTL, contextKey)
-    if cachedUiMapID ~= nil then
-        return cachedUiMapID, cachedX, cachedY
-    end
-
+local function _GetCurrentPlayerPositionImpl(contextKey)
     -- Try using UnitPosition + HBD to derive player's zone-relative coordinates
     -- This avoids changing the current map zoom/selection which can cause UI churn.
     local actualUiMapID = ResolveUiMapIDByZoneTexts()
@@ -1637,6 +1631,28 @@ function QuestieCompat.GetCurrentPlayerPosition()
 
     StoreCachedPlayerPosition(playerPositionCache, contextKey, uiMapID, x, y)
 	return uiMapID, x, y;
+end
+
+function QuestieCompat.GetCurrentPlayerPosition()
+    local contextKey = GetPlayerPositionCacheContextKey()
+    local cachedUiMapID, cachedX, cachedY = TryGetCachedPlayerPosition(playerPositionCache, PLAYER_POSITION_CACHE_TTL, contextKey)
+    if cachedUiMapID ~= nil then
+        return cachedUiMapID, cachedX, cachedY
+    end
+
+    -- Save map context so addons like Carbonite aren't disrupted by our SetMapToCurrentZone calls.
+    local savedContinent, savedZone = GetCurrentMapContinent(), GetCurrentMapZone()
+    local uiMapID, x, y = _GetCurrentPlayerPositionImpl(contextKey)
+
+    -- Restore if we changed it and the Blizzard WorldMap isn't showing (Carbonite uses its own frame).
+    if not (WorldMapFrame and WorldMapFrame:IsVisible()) then
+        local newContinent, newZone = GetCurrentMapContinent(), GetCurrentMapZone()
+        if newContinent ~= savedContinent or newZone ~= savedZone then
+            SetMapZoom(savedContinent, savedZone or 0)
+        end
+    end
+
+    return uiMapID, x, y
 end
 
 function QuestieCompat.GetCurrentPlayerRawPosition()
