@@ -18,15 +18,16 @@ Default thresholds:
 
 Type `/oom` in-game to open the settings window. Everything is configurable without touching any files:
 
-- **Chat Channel** — where warnings are broadcast (`SAY`, `PARTY`, `RAID`, ...)
-- **Message Duration** — how long the on-screen alert stays visible
-- **Font Size** — size of the on-screen text
-- **Broadcast In** — toggle chat broadcasts per instance type (open world, dungeon, raid, arena, battleground)
-- **Mana Thresholds** — percentage triggers and custom messages for all three alerts
+- **Chat Channel** - where warnings are broadcast (`SAY`, `PARTY`, `RAID`, ...)
+- **Message Duration** - how long the on-screen alert stays visible
+- **Font Size** - size of the on-screen text
+- **Broadcast In** - toggle chat broadcasts per instance type (open world, dungeon, raid, arena, battleground)
+- **Mana Thresholds** - percentage triggers and custom messages for all three alerts
+
+## Download
+
+**[Download OutOfMana.zip](https://github.com/GetParanoid/335_Addons/releases/download/latest/OutOfMana.zip)** - includes GP_Lib
 
 ## Installation
 
-1. Install **GP_Lib** — drop the `GP_Lib` folder into `Interface/AddOns/`
-2. Install **OutOfMana** — drop the `OutOfMana` folder into `Interface/AddOns/`
-
-GP_Lib is a shared library used by my addons. OutOfMana will not load without it.
+Extract the zip into `Interface/AddOns/`. Both `OutOfMana/` and `GP_Lib/` are inside - drop them both in. OutOfMana will not load without GP_Lib.

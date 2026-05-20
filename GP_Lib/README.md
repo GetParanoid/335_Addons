@@ -4,9 +4,15 @@ Shared utility library for WoW 3.3.5.
 
 ## What it currently provides
 
-- **Custom config windows** — draggable, dialog-style frames with Save / Cancel buttons
-- **Widget helpers** — checkbox, slider, dropdown, edit box — all with automatic Save / refresh lifecycle
-- **Tooltips** — one-line hover descriptions on any widget
+- **Custom config windows** - draggable, dialog-style frames with Save / Cancel buttons
+- **Widget helpers** - checkbox, slider, dropdown, edit box - all with automatic Save / refresh lifecycle
+- **Tooltips** - one-line hover descriptions on any widget
+
+## Download
+
+**[Download GP_Lib.zip](https://github.com/GetParanoid/335_Addons/releases/download/latest/GP_Lib.zip)**
+
+Note: addons that depend on GP_Lib (OutOfMana, SwingTimer) already bundle it in their own zip - you only need this if you want GP_Lib standalone.
 
 ## Installation
 
@@ -22,7 +28,7 @@ in their `.toc` file, and WoW loads GP_Lib first automatically.
 
 | File | Purpose |
 |---|---|
-| `GP_Lib.lua` | Bootstrap — initialises the `GP_Lib` table and shared utilities |
+| `GP_Lib.lua` | Bootstrap - initialises the `GP_Lib` table and shared utilities |
 | `modules/UI.lua` | Config window and all widget helpers |
 
 New modules (e.g. `modules/DB.lua`, `modules/Events.lua`) follow the same pattern: create the file in `modules/`, add it to the toc after `GP_Lib.lua`.
