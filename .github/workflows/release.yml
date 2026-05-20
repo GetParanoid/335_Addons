@@ -1,0 +1,111 @@
+name: Build and Release AddOns
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build zips and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          TIMESTAMP="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          RELEASE_TAG="latest"
+
+          mkdir -p /tmp/zips
+
+          # ── Discover and package addons ────────────────────────────────────
+          while IFS= read -r -d '' dir; do
+            name="$(basename "$dir")"
+
+            # Skip hidden dirs and known non-addon dirs
+            [[ "$name" == .* ]] && continue
+            [ "$name" = "API" ] && continue
+
+            # Guard against broken symlinks
+            if [ -L "$dir" ] && [ ! -e "$dir" ]; then
+              echo "::warning::Skipping '$name' — broken symlink on runner"
+              continue
+            fi
+            [ ! -d "$dir" ] && continue
+
+            if [ -f "$dir/${name}.toc" ]; then
+              # ── Direct addon ───────────────────────────────────────────────
+              staging="$(mktemp -d)"
+              mkdir -p "${staging}/${name}"
+              cp -r "${dir}/." "${staging}/${name}/"
+
+              if grep -qE "^##[[:space:]]*(Dependencies|RequiredDeps):.*\bGP_Lib\b" "${dir}/${name}.toc" 2>/dev/null; then
+                echo "Packaging ${name} + GP_Lib"
+                cp -r "GP_Lib" "${staging}/"
+              else
+                echo "Packaging ${name} (standalone)"
+              fi
+
+              (cd "$staging" && zip -r "/tmp/zips/${name}.zip" -- *)
+              rm -rf "$staging"
+
+            else
+              # ── Container dir ──────────────────────────────
+              # Bundle all valid subaddons into one zip named after the container
+              subpaths=()
+              needs_gplib=false
+
+              while IFS= read -r -d '' subdir; do
+                subname="$(basename "$subdir")"
+                [ ! -f "$subdir/${subname}.toc" ] && continue
+                subpaths+=("$subdir")
+                grep -qE "^##[[:space:]]*(Dependencies|RequiredDeps):.*\bGP_Lib\b" \
+                  "$subdir/${subname}.toc" 2>/dev/null && needs_gplib=true
+              done < <(find "$dir" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+
+              [ "${#subpaths[@]}" -eq 0 ] && continue
+
+              staging="$(mktemp -d)"
+              for subdir in "${subpaths[@]}"; do
+                subname="$(basename "$subdir")"
+                mkdir -p "${staging}/${subname}"
+                cp -r "${subdir}/." "${staging}/${subname}/"
+              done
+              [ "$needs_gplib" = true ] && cp -r "GP_Lib" "${staging}/"
+
+              echo "Packaging ${name}.zip with: $(for s in "${subpaths[@]}"; do basename "$s"; done | tr '\n' ' ')"
+              (cd "$staging" && zip -r "/tmp/zips/${name}.zip" -- *)
+              rm -rf "$staging"
+            fi
+
+          done < <(find . -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
+
+          # ── Delete + recreate "latest" release ─────────────────────────────
+          gh release delete "$RELEASE_TAG" --repo "$REPO" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "$RELEASE_TAG" \
+            --repo "$REPO" \
+            --title "Latest Releases" \
+            --notes "Updated: ${TIMESTAMP} (commit \`${SHORT_SHA}\`)" \
+            --latest
+
+          # ── Upload all zips ────────────────────────────────────────────────
+          for zip in /tmp/zips/*.zip; do
+            echo "Uploading $(basename "$zip")"
+            gh release upload "$RELEASE_TAG" "$zip" --repo "$REPO" --clobber
+          done
+
+          echo "Done."
