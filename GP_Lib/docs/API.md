@@ -133,6 +133,60 @@ GP_Lib:SetTooltip(cb, "Enables the thing when checked.")
 
 ---
 
+## Bar
+
+### `GP_Lib:CreateBar(parent, width, height)`
+
+Creates and returns a styled horizontal progress bar.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `parent` | Frame | Parent frame (e.g. `UIParent`) |
+| `width` | number | Initial width in pixels |
+| `height` | number | Initial height in pixels |
+
+**Returns:** `Frame` — the bar frame, with the extra methods below added to it.
+
+The bar has a dark backdrop and a thin border. All standard `Frame` methods (`SetPoint`, `SetAlpha`, `SetScale`, `Show`, `Hide`, `SetMovable`, etc.) work normally. Three extra methods are added:
+
+#### `:SetValue(v)`
+
+Sets the fill fraction. `v` is clamped to `[0, 1]`. `0` = empty, `1` = full.
+
+#### `:SetColor(r, g, b [, a])`
+
+Sets the fill colour. `a` defaults to `1`.
+
+#### `:SetFillDirection(direction)`
+
+Controls which edge the bar fills from.
+
+| Value | Behaviour |
+|---|---|
+| `"LEFT"` (default) | Fill grows rightward from the left edge |
+| `"RIGHT"` | Fill grows leftward from the right edge |
+
+#### `:SetBorderColor(r, g, b [, a])`
+
+Sets the border colour. `a` defaults to `1`.
+
+```lua
+local bar = GP_Lib:CreateBar(UIParent, 200, 12)
+bar:SetPoint("CENTER", UIParent, "CENTER", 0, -200)
+bar:SetColor(1, 0.8, 0)          -- golden fill
+bar:SetFillDirection("LEFT")
+bar:SetValue(0.6)                 -- 60 % full
+bar:Show()
+
+-- update every frame
+bar:SetScript("OnUpdate", function(_, elapsed)
+    -- frac = remaining / total
+    bar:SetValue(frac)
+end)
+```
+
+---
+
 ## Widget lifecycle summary
 
 | Event | When | What happens |
