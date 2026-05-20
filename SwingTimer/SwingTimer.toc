@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: [ |cFFFFFFFFGP|r ] |cFF11A6ECSwingTimer|r |cFF7FFF7Fv1.1.0|r
+## Author: GetParanoid
+## Notes: Melee swing timer bar. /st for commands.
+## Version: 2
+## Dependencies: GP_Lib
+## X-Category: GP
+## SavedVariables: SwingTimer_Settings
+
+SwingTimer.lua
