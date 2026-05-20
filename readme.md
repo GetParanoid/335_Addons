@@ -16,7 +16,7 @@ Shared utility library required by my addons. Provides config windows, widget he
 ### [OutOfMana](OutOfMana/)
 Mana threshold announcer. Fires large on-screen alerts (and optional chat broadcasts) at configurable mana percentages. Requires GP_Lib.
 
-**[Download OutOfMana.zip](https://github.com/GetParanoid/335_Addons/releases/download/latest/OutOfMana.zip)** - includes GP_Lib
+**[Download OutOfMana.zip](https://github.com/GetParanoid/335_Addons/releases/download/latest/OutOfMana.zip)**
 
 ---
 
