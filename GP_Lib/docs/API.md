@@ -198,6 +198,104 @@ end)
 
 ---
 
+## Table utilities
+
+Defined in `GP_Lib.lua`. Used as plain functions (not methods).
+
+### `GP_Lib.DeepCopy(t)`
+
+Recursive deep copy of a table. Non-table values are returned unchanged. Does not handle metatables or cyclic references.
+
+### `GP_Lib.ApplyDefaults(tbl, defaults)`
+
+Fills missing entries in `tbl` from `defaults`. Nested tables are merged recursively; missing nested tables are deep-copied (so callers never share references with the defaults).
+
+```lua
+local DEFAULTS = { fontSize = 12, broadcast = { party = true, raid = false } }
+MyAddonDB = MyAddonDB or {}
+GP_Lib.ApplyDefaults(MyAddonDB, DEFAULTS)
+```
+
+---
+
+## Inventory
+
+Container scanning across bags, bank, and keyring. Bank slots are only readable while the bank window is open (`BANKFRAME_OPENED` / `BANKFRAME_CLOSED`).
+
+All scan functions accept an `opts` table:
+
+| Key | Default | Description |
+|---|---|---|
+| `bags` | `true` | Bags `0`–`4` (backpack + 4 equipped bags) |
+| `bank` | `false` | Bank slots `-1` (main bank) and `5`–`11` (bank bags) |
+| `keyring` | `false` | Keyring bag `-2` (legacy; harmless when empty) |
+
+When `opts` is omitted, only bags are scanned.
+
+```lua
+-- Default: bags only.
+local have = GP_Lib:ScanContainers()
+
+-- Bags + bank (bank must be open).
+local have = GP_Lib:ScanContainers({ bank = true })
+
+-- Bank only (skip bags). Useful for "what's in storage?" views.
+local stored = GP_Lib:ScanContainers({ bags = false, bank = true })
+
+-- Everything we can read, including the legacy keyring.
+local everything = GP_Lib:ScanContainers({ bank = true, keyring = true })
+
+-- Same opts table is accepted by every Inventory function.
+local stack = GP_Lib:CountItem(2589, { bank = true })       -- Linen Cloth, bags + bank
+local bag, slot = GP_Lib:FindItem(6948, { bags = false, bank = true })  -- Hearthstone in bank
+```
+
+### `GP_Lib:LinkToItemID(link)`
+
+Parses the itemID from any string containing an itemString (e.g. a full hyperlink). Returns `number` or `nil`.
+
+### `GP_Lib:ForEachItem(fn, opts)`
+
+Iterates every occupied slot in the requested containers, calling `fn(bag, slot, itemID, count)` for each. If `fn` returns `true`, iteration stops early.
+
+```lua
+GP_Lib:ForEachItem(function(bag, slot, id, count)
+    print(id, "x", count, "in", bag, slot)
+end, { bags = true, bank = true })
+```
+
+### `GP_Lib:ScanContainers(opts)`
+
+Returns `{ [itemID] = totalCount }` summed across the requested containers.
+
+```lua
+local have = GP_Lib:ScanContainers({ bags = true, bank = true })
+print("Linen Cloth:", have[2589] or 0)
+```
+
+### `GP_Lib:CountItem(itemID, opts)`
+
+Total count of one itemID across the requested containers.
+
+### `GP_Lib:FindItem(itemID, opts)`
+
+Returns `(bag, slot)` of the first slot containing the given itemID, or `nil` if not found. Useful for "where is X?" lookups.
+
+```lua
+local bag, slot = GP_Lib:FindItem(6948)   -- Hearthstone
+if bag then UseContainerItem(bag, slot) end
+```
+
+### Constants
+
+| Name | Value | Notes |
+|---|---|---|
+| `GP_Lib.BAG_IDS` | `{ 0, 1, 2, 3, 4 }` | Backpack + 4 equipped bags |
+| `GP_Lib.BANK_IDS` | `{ -1, 5, 6, 7, 8, 9, 10, 11 }` | Only readable while bank is open |
+| `GP_Lib.KEYRING_IDS` | `{ -2 }` | Removed in patch 4.0 |
+
+---
+
 ## Adding a new module
 
 1. Create `modules/MyModule.lua`

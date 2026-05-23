@@ -6,5 +6,7 @@
 ## X-Category: GP
 
 GP_Lib.lua
+modules\Table.lua
 modules\Bar.lua
 modules\UI.lua
+modules\Inventory.lua
