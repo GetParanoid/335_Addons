@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -16,43 +18,56 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history to diff against the previous push
 
-      - name: Build zips and publish release
+      - name: Build changed addons and update release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          BEFORE_SHA:  ${{ github.event.before }}
+          AFTER_SHA:   ${{ github.sha }}
+          EVENT_NAME:  ${{ github.event_name }}
         run: |
           set -euo pipefail
 
           REPO="${{ github.repository }}"
-          SHORT_SHA="${{ github.sha }}"
-          SHORT_SHA="${SHORT_SHA:0:7}"
+          SHORT_SHA="${AFTER_SHA:0:7}"
           TIMESTAMP="$(date -u '+%Y-%m-%d %H:%M UTC')"
           RELEASE_TAG="latest"
 
-          mkdir -p /tmp/zips
+          # ── Helpers ─────────────────────────────────────────────────────────
 
-          # ── Discover and package addons ────────────────────────────────────
-          while IFS= read -r -d '' dir; do
-            name="$(basename "$dir")"
+          # Does the given toc file declare GP_Lib as a dependency?
+          depends_on_gplib() {
+            grep -qE "^##[[:space:]]*(Dependencies|RequiredDeps):.*\bGP_Lib\b" "$1" 2>/dev/null
+          }
 
-            # Skip hidden dirs and known non-addon dirs
-            [[ "$name" == .* ]] && continue
-            [ "$name" = "API" ] && continue
-
-            # Guard against broken symlinks
-            if [ -L "$dir" ] && [ ! -e "$dir" ]; then
-              echo "::warning::Skipping '$name' — broken symlink on runner"
-              continue
+          # Does the addon dir (or any subaddon inside a container dir) use GP_Lib?
+          addon_uses_gplib() {
+            local name="$1" dir="./$1"
+            if [ -f "$dir/${name}.toc" ]; then
+              depends_on_gplib "$dir/${name}.toc"
+              return
             fi
-            [ ! -d "$dir" ] && continue
+            while IFS= read -r -d '' sub; do
+              local sname; sname="$(basename "$sub")"
+              [ -f "$sub/${sname}.toc" ] || continue
+              if depends_on_gplib "$sub/${sname}.toc"; then return 0; fi
+            done < <(find "$dir" -maxdepth 1 -mindepth 1 -type d -print0)
+            return 1
+          }
+
+          # Build a single addon zip into /tmp/zips/$name.zip
+          build_addon() {
+            local name="$1" dir="./$1"
 
             if [ -f "$dir/${name}.toc" ]; then
-              # ── Direct addon ───────────────────────────────────────────────
-              staging="$(mktemp -d)"
+              # Direct addon
+              local staging; staging="$(mktemp -d)"
               mkdir -p "${staging}/${name}"
               cp -r "${dir}/." "${staging}/${name}/"
 
-              if grep -qE "^##[[:space:]]*(Dependencies|RequiredDeps):.*\bGP_Lib\b" "${dir}/${name}.toc" 2>/dev/null; then
+              if depends_on_gplib "${dir}/${name}.toc"; then
                 echo "Packaging ${name} + GP_Lib"
                 cp -r "GP_Lib" "${staging}/"
               else
@@ -61,28 +76,23 @@ jobs:
 
               (cd "$staging" && zip -r "/tmp/zips/${name}.zip" -- *)
               rm -rf "$staging"
-
             else
-              # ── Container dir ──────────────────────────────
-              # Bundle all valid subaddons into one zip named after the container
-              subpaths=()
-              needs_gplib=false
-
-              while IFS= read -r -d '' subdir; do
-                subname="$(basename "$subdir")"
-                [ ! -f "$subdir/${subname}.toc" ] && continue
-                subpaths+=("$subdir")
-                grep -qE "^##[[:space:]]*(Dependencies|RequiredDeps):.*\bGP_Lib\b" \
-                  "$subdir/${subname}.toc" 2>/dev/null && needs_gplib=true
+              # Container dir — bundle all valid subaddons into one zip
+              local subpaths=() needs_gplib=false
+              while IFS= read -r -d '' sub; do
+                local sname; sname="$(basename "$sub")"
+                [ -f "$sub/${sname}.toc" ] || continue
+                subpaths+=("$sub")
+                depends_on_gplib "${sub}/${sname}.toc" && needs_gplib=true
               done < <(find "$dir" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
 
-              [ "${#subpaths[@]}" -eq 0 ] && continue
+              [ "${#subpaths[@]}" -eq 0 ] && return
 
-              staging="$(mktemp -d)"
-              for subdir in "${subpaths[@]}"; do
-                subname="$(basename "$subdir")"
-                mkdir -p "${staging}/${subname}"
-                cp -r "${subdir}/." "${staging}/${subname}/"
+              local staging; staging="$(mktemp -d)"
+              for sub in "${subpaths[@]}"; do
+                local sname; sname="$(basename "$sub")"
+                mkdir -p "${staging}/${sname}"
+                cp -r "${sub}/." "${staging}/${sname}/"
               done
               [ "$needs_gplib" = true ] && cp -r "GP_Lib" "${staging}/"
 
@@ -90,22 +100,146 @@ jobs:
               (cd "$staging" && zip -r "/tmp/zips/${name}.zip" -- *)
               rm -rf "$staging"
             fi
+          }
 
+          # ── Decide what to rebuild ─────────────────────────────────────────
+          rebuild_all=false
+          gplib_changed=false
+          changed_paths=()
+          changed_dirs=()
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] \
+             || [ -z "${BEFORE_SHA:-}" ] \
+             || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "Manual dispatch or first push on branch — rebuilding all addons."
+            rebuild_all=true
+          else
+            mapfile -t changed_paths < <(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA")
+            echo "Files changed since ${BEFORE_SHA:0:7}:"
+            if [ "${#changed_paths[@]}" -eq 0 ]; then
+              echo "  (none)"
+            else
+              printf '  %s\n' "${changed_paths[@]}"
+            fi
+
+            for path in "${changed_paths[@]}"; do
+              [ -z "$path" ] && continue
+
+              # Workflow / CI changes → rebuild everything so the change validates
+              if [[ "$path" == .github/* ]]; then
+                echo "  → .github changed, forcing rebuild_all"
+                rebuild_all=true
+                break
+              fi
+
+              # Root-level files (no slash) don't belong to an addon
+              [[ "$path" != */* ]] && continue
+
+              top="${path%%/*}"
+              changed_dirs+=("$top")
+              [ "$top" = "GP_Lib" ] && gplib_changed=true
+            done
+          fi
+
+          # ── Walk addons; build only the ones that need it; track expected zips
+          mkdir -p /tmp/zips
+          built_any=false
+          expected_zips=()
+
+          while IFS= read -r -d '' dir; do
+            name="$(basename "$dir")"
+
+            [[ "$name" == .* ]] && continue
+            [ "$name" = "API" ] && continue
+            if [ -L "$dir" ] && [ ! -e "$dir" ]; then
+              echo "::warning::Skipping '$name' — broken symlink on runner"
+              continue
+            fi
+            [ ! -d "$dir" ] && continue
+
+            # Record that this addon should have a zip on the release.
+            expected_zips+=("${name}.zip")
+
+            should_rebuild=false
+            reason=""
+
+            if [ "$rebuild_all" = true ]; then
+              should_rebuild=true
+              reason="rebuild_all"
+            else
+              for cd in "${changed_dirs[@]}"; do
+                if [ "$cd" = "$name" ]; then
+                  should_rebuild=true
+                  reason="changed"
+                  break
+                fi
+              done
+              if [ "$should_rebuild" = false ] \
+                 && [ "$gplib_changed" = true ] \
+                 && [ "$name" != "GP_Lib" ] \
+                 && addon_uses_gplib "$name"; then
+                should_rebuild=true
+                reason="GP_Lib dependent"
+              fi
+            fi
+
+            if [ "$should_rebuild" = true ]; then
+              echo "→ Rebuilding $name ($reason)"
+              build_addon "$name"
+              built_any=true
+            else
+              echo "  Skipping  $name (no changes)"
+            fi
           done < <(find . -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
 
-          # ── Delete + recreate "latest" release ─────────────────────────────
-          gh release delete "$RELEASE_TAG" --repo "$REPO" --yes --cleanup-tag 2>/dev/null || true
+          # ── Detect orphan assets on the existing release ───────────────────
+          orphans=()
+          release_exists=false
+          if gh release view "$RELEASE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            release_exists=true
+            mapfile -t existing_assets < <(
+              gh release view "$RELEASE_TAG" --repo "$REPO" --json assets --jq '.assets[].name'
+            )
+            for asset in "${existing_assets[@]}"; do
+              [[ "$asset" == *.zip ]] || continue
+              is_expected=false
+              for expected in "${expected_zips[@]}"; do
+                if [ "$asset" = "$expected" ]; then is_expected=true; break; fi
+              done
+              [ "$is_expected" = false ] && orphans+=("$asset")
+            done
+          fi
 
-          gh release create "$RELEASE_TAG" \
-            --repo "$REPO" \
-            --title "Latest Releases" \
-            --notes "Updated: ${TIMESTAMP} (commit \`${SHORT_SHA}\`)" \
-            --latest
+          if [ "$built_any" = false ] && [ "${#orphans[@]}" -eq 0 ]; then
+            echo "Nothing to rebuild and no orphan assets. Release untouched."
+            exit 0
+          fi
 
-          # ── Upload all zips ────────────────────────────────────────────────
-          for zip in /tmp/zips/*.zip; do
-            echo "Uploading $(basename "$zip")"
-            gh release upload "$RELEASE_TAG" "$zip" --repo "$REPO" --clobber
+          # ── Ensure release exists, update notes ────────────────────────────
+          if [ "$release_exists" = false ]; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$REPO" \
+              --title "Latest Releases" \
+              --notes "Updated: ${TIMESTAMP} (commit \`${SHORT_SHA}\`)" \
+              --latest
+          else
+            gh release edit "$RELEASE_TAG" \
+              --repo "$REPO" \
+              --notes "Updated: ${TIMESTAMP} (commit \`${SHORT_SHA}\`)"
+          fi
+
+          # ── Upload changed zips ────────────────────────────────────────────
+          if [ "$built_any" = true ]; then
+            for zip in /tmp/zips/*.zip; do
+              echo "Uploading $(basename "$zip")"
+              gh release upload "$RELEASE_TAG" "$zip" --repo "$REPO" --clobber
+            done
+          fi
+
+          # ── Delete orphan zips (addons removed from the repo) ──────────────
+          for orphan in "${orphans[@]}"; do
+            echo "Deleting orphan asset: $orphan"
+            gh release delete-asset "$RELEASE_TAG" "$orphan" --repo "$REPO" --yes
           done
 
           echo "Done."
