@@ -27,6 +27,13 @@ Melee swing timer bar. Shows a draggable progress bar that tracks your auto-atta
 
 ---
 
+### [WhatCanICraft](WhatCanICraft/)
+Profession helper. Lists every recipe you can craft from items in your bags (and bank, when it's open) next to any open tradeskill window. Left-click a row to jump to that recipe; right-click to pull its reagents from the bank. Requires GP_Lib.
+
+**[Download WhatCanICraft.zip](https://github.com/GetParanoid/335_Addons/releases/download/latest/WhatCanICraft.zip)**
+
+---
+
 ### [Questie-335](Questie-335/)
 Quest helper for WotLK 3.3.5a. This fork adds a built-in direction arrow (no TomTom required) and full Carbonite compatibility.
 
