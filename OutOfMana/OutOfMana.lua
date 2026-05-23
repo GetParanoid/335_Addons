@@ -35,25 +35,6 @@ local DEFAULTS = {
     },
 }
 
-local function DeepCopy(orig)
-    local copy = {}
-    for k, v in pairs(orig) do
-        copy[k] = type(v) == "table" and DeepCopy(v) or v
-    end
-    return copy
-end
-
-local function ApplyDefaults(tbl, defaults)
-    for k, v in pairs(defaults) do
-        if tbl[k] == nil then
-            tbl[k] = type(v) == "table" and DeepCopy(v) or v
-        elseif type(v) == "table" and type(tbl[k]) == "table" then
-            ApplyDefaults(tbl[k], v)
-        end
-    end
-end
-
-
 -- STATE -----------------------------------------------------------------------
 
 local instanceType  = "none"
@@ -142,7 +123,7 @@ OutOfMana:RegisterEvent("UNIT_DISPLAYPOWER")
 OutOfMana:SetScript("OnEvent", function(self, event, unit)
     if event == "PLAYER_LOGIN" then
         OutOfManaDB = OutOfManaDB or {}
-        ApplyDefaults(OutOfManaDB, DEFAULTS)
+        GP_Lib.ApplyDefaults(OutOfManaDB, DEFAULTS)
 
         local title = GetAddOnMetadata("OutOfMana", "Title") or "OutOfMana"
         DEFAULT_CHAT_FRAME:AddMessage(title .. " - |cFF00FF00Successfully loaded!|r  ( /oom )")
