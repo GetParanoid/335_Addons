@@ -81,6 +81,7 @@ ZoneDB.private.areaIdToUiMapId = {
     [1657] = 1457, -- Darnassus
     [1977] = 233, -- Zul'Gurub - Raid
     [2017] = 317, -- Stratholme - Dungeon
+    [2057] = 289, -- Scholomance - Dungeon
     [2100] = 280, -- Maraudon - Dungeon
     [2159] = 248, -- Onyxia's Lair - Dungeon?
     [2366] = 273, -- The Black Morass - Dungeon
