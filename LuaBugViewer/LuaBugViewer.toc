@@ -1,0 +1,16 @@
+## Interface: 30300
+## Title: [ |cFFFFFFFFGP|r ] |cFF11A6ECLuaBugViewer|r
+## Author: GetParanoid
+## Version: 1.0
+## Notes: Captures Lua errors and shows them in a clean session viewer.
+## Dependencies: GP_Lib
+## SavedVariables: LuaBugViewerDB
+## X-Category: GP
+
+Core.lua
+modules\SessionLog.lua
+modules\ErrorHandler.lua
+modules\Notifier.lua
+modules\Viewer.lua
+modules\EscMenuEntry.lua
+modules\SlashCommand.lua
