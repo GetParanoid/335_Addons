@@ -10,3 +10,7 @@ modules\Table.lua
 modules\Bar.lua
 modules\UI.lua
 modules\Inventory.lua
+modules\ScrollList.lua
+modules\CopyableText.lua
+modules\GameMenu.lua
+modules\Toast.lua
