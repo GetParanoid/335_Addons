@@ -34,6 +34,13 @@ Profession helper. Lists every recipe you can craft from items in your bags (and
 
 ---
 
+### [LuaBugViewer](LuaBugViewer/)
+Modern Lua error catcher. Drop-in replacement for BugGrabber + BugSack. Captures errors as they happen, deduplicates repeats, throttles runaway loops, and shows them in a two-pane viewer reachable via `/lbv` or a button on the ESC menu. Requires GP_Lib.
+
+**[Download LuaBugViewer.zip](https://github.com/GetParanoid/335_Addons/releases/download/latest/LuaBugViewer.zip)**
+
+---
+
 ### [Questie-335](Questie-335/)
 Quest helper for WotLK 3.3.5a. This fork adds a built-in direction arrow (no TomTom required) and full Carbonite compatibility.
 
