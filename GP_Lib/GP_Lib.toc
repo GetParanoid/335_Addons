@@ -14,3 +14,6 @@ modules\ScrollList.lua
 modules\CopyableText.lua
 modules\GameMenu.lua
 modules\Toast.lua
+modules\VersionCheck.lua
+modules\ChatLink.lua
+modules\LoadedAnnounce.lua
