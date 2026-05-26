@@ -26,6 +26,7 @@ local bankOpen           = false
 local scanning           = false  -- guard against re-entrant Scan via cascading events
 local filtersInitialized = false  -- one-shot ClearFilters per tradeskill-window open
 local resultFrame
+local currentResults     = {}
 
 
 -- RECIPE SCAN -----------------------------------------------------------------
@@ -89,6 +90,8 @@ end
 
 -- UI --------------------------------------------------------------------------
 
+local Render  -- forward declaration (referenced inside CreateResultFrame's scroll handler)
+
 local function ClickRow(recipeName)
     if not tradeOpen or not recipeName then return end
     local n = GetNumTradeSkills()
@@ -147,7 +150,7 @@ end
 local function CreateResultFrame()
     local f = CreateFrame("Frame", "WhatCanICraft_Frame", UIParent)
     f:SetWidth(300)
-    f:SetHeight(30 + MAX_ROWS * ROW_HEIGHT + 12)
+    f:SetHeight(44 + MAX_ROWS * ROW_HEIGHT + 14)
     f:SetFrameStrata("HIGH")
     f:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -179,12 +182,22 @@ local function CreateResultFrame()
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
 
+    local scroll = CreateFrame("ScrollFrame", "WhatCanICraft_Scroll", f, "FauxScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 22, -44)
+    scroll:SetPoint("BOTTOMRIGHT", -38, 14)
+    scroll:SetScript("OnVerticalScroll", function(self, offset)
+        FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, function()
+            Render(currentResults)
+        end)
+    end)
+    f.scroll = scroll
+
     f.rows = {}
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, f)
         row:SetHeight(ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", 22, -(44 + (i - 1) * ROW_HEIGHT))
-        row:SetPoint("RIGHT", f, "RIGHT", -22, 0)
+        row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, -((i - 1) * ROW_HEIGHT))
+        row:SetPoint("RIGHT", scroll, "RIGHT", 0, 0)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -209,11 +222,6 @@ local function CreateResultFrame()
         f.rows[i] = row
     end
 
-    local more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    more:SetPoint("BOTTOM", 0, 14)
-    more:SetText("")
-    f.more = more
-
     return f
 end
 
@@ -229,22 +237,29 @@ local function ApplyPosition(f)
     end
 end
 
-local function Render(results, tradeName)
+Render = function(results, tradeName)
     if not resultFrame then
         resultFrame = CreateResultFrame()
         ApplyPosition(resultFrame)
     end
 
-    local label = tradeName or "Tradeskill"
-    if bankOpen then
-        resultFrame.subtitle:SetText(label .. "  (bags + bank)")
-    else
-        resultFrame.subtitle:SetText(label .. "  (bags only)")
+    currentResults = results or currentResults or {}
+
+    if tradeName then
+        if bankOpen then
+            resultFrame.subtitle:SetText(tradeName .. "  (bags + bank)")
+        else
+            resultFrame.subtitle:SetText(tradeName .. "  (bags only)")
+        end
     end
+
+    local total  = #currentResults
+    FauxScrollFrame_Update(resultFrame.scroll, total, MAX_ROWS, ROW_HEIGHT)
+    local offset = FauxScrollFrame_GetOffset(resultFrame.scroll)
 
     for i = 1, MAX_ROWS do
         local row = resultFrame.rows[i]
-        local r = results[i]
+        local r = currentResults[i + offset]
         if r then
             row.recipeName = r.name
             row.reagents   = r.reagents
@@ -256,13 +271,6 @@ local function Render(results, tradeName)
             row.text:SetText("")
             row:Hide()
         end
-    end
-
-    local overflow = #results - MAX_ROWS
-    if overflow > 0 then
-        resultFrame.more:SetText(string.format("(+%d more not shown)", overflow))
-    else
-        resultFrame.more:SetText("")
     end
 
     resultFrame:Show()

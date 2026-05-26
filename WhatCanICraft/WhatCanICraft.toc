@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: [ |cFFFFFFFFGP|r ] |cFF11A6ECWhatCanICraft|r |cFF7FFF7Fv0.1.0|r
 ## Author: GetParanoid
-## Version: 0.1.0
+## Version: 1.1.0
 ## Notes: |cFF11A6ECWhatCanICraft|r lists craftable recipes using bags + bank.
 ## X-Category: GP
 ## Dependencies: GP_Lib
