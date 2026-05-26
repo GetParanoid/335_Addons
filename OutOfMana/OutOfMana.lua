@@ -125,8 +125,9 @@ OutOfMana:SetScript("OnEvent", function(self, event, unit)
         OutOfManaDB = OutOfManaDB or {}
         GP_Lib.ApplyDefaults(OutOfManaDB, DEFAULTS)
 
-        local title = GetAddOnMetadata("OutOfMana", "Title") or "OutOfMana"
-        DEFAULT_CHAT_FRAME:AddMessage(title .. " - |cFF00FF00Successfully loaded!|r  ( /oom )")
+        if GP_Lib.LoadedAnnounce then
+            GP_Lib.LoadedAnnounce:Register("OutOfMana", "/oom")
+        end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         local _, iType = IsInInstance()

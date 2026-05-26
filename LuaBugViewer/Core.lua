@@ -64,6 +64,10 @@ local function OnLoaded()
         local m = LBV.modules[name]
         if m and m.Init then m:Init() end
     end
+
+    if GP_Lib.LoadedAnnounce then
+        GP_Lib.LoadedAnnounce:Register("LuaBugViewer", "/lbv")
+    end
 end
 
 

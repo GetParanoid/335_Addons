@@ -310,8 +310,9 @@ addon:SetScript("OnEvent", function(self, event)
         WhatCanICraftDB = WhatCanICraftDB or {}
         GP_Lib.ApplyDefaults(WhatCanICraftDB, DEFAULTS)
 
-        local title = GetAddOnMetadata("WhatCanICraft", "Title") or "WhatCanICraft"
-        DEFAULT_CHAT_FRAME:AddMessage(title .. " - |cFF00FF00Successfully loaded!|r  ( /wcic )")
+        if GP_Lib.LoadedAnnounce then
+            GP_Lib.LoadedAnnounce:Register("WhatCanICraft", "/wcic")
+        end
 
     elseif event == "TRADE_SKILL_SHOW" then
         tradeOpen = true
