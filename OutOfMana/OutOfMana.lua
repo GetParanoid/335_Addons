@@ -4,7 +4,7 @@ OutOfMana - a simple Out of Mana announcer addon for WoW 3.3.5 (Wrath).
 GitHub: https://github.com/GetParanoid/335_Addons
 
 Settings are managed through the in-game config panel:
-  Interface > AddOns > OutOfMana   (or type /oom)
+   type /oom
 --]]
 
 
@@ -21,6 +21,7 @@ local DEFAULTS = {
     chatChannel     = "SAY",
     messageDuration = 3,
     fontSize        = 96,
+    debounceSeconds = 15,
     thresholds = {
         { pct = 0.30, msg = "--- LOW ON MANA ---"       },
         { pct = 0.15, msg = "--- CRITICAL LOW MANA ---" },
@@ -37,8 +38,10 @@ local DEFAULTS = {
 
 -- STATE -----------------------------------------------------------------------
 
-local instanceType  = "none"
-local lastTriggered = 0
+local instanceType      = "none"
+local lastTriggered     = 0
+local lastAnnouncedLvl  = 0
+local lastAnnouncedAt   = 0
 local messageFrame
 
 
@@ -100,10 +103,19 @@ local function OnManaChanged()
     end
 
     if tripped > lastTriggered then
-        local entry = OutOfManaDB.thresholds[tripped]
-        ShowMessage(entry.msg)
-        if OutOfManaDB.broadcastIn[instanceType] then
-            SendChatMessage(entry.msg, OutOfManaDB.chatChannel)
+        -- Higher-priority threshold always fires; same level is debounced.
+        local now           = GetTime()
+        local isEscalation  = tripped > lastAnnouncedLvl
+        local debounceReady = (now - lastAnnouncedAt) >= (OutOfManaDB.debounceSeconds or 0)
+
+        if isEscalation or debounceReady then
+            local entry = OutOfManaDB.thresholds[tripped]
+            ShowMessage(entry.msg)
+            if OutOfManaDB.broadcastIn[instanceType] then
+                SendChatMessage(entry.msg, OutOfManaDB.chatChannel)
+            end
+            lastAnnouncedLvl = tripped
+            lastAnnouncedAt  = now
         end
     end
 
@@ -130,9 +142,11 @@ OutOfMana:SetScript("OnEvent", function(self, event, unit)
         end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
-        local _, iType = IsInInstance()
-        instanceType = iType or "none"
-        lastTriggered = 0
+        local _, iType   = IsInInstance()
+        instanceType     = iType or "none"
+        lastTriggered    = 0
+        lastAnnouncedLvl = 0
+        lastAnnouncedAt  = 0
 
     elseif unit == "player" then
         OnManaChanged()

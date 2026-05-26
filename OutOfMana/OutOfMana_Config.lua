@@ -44,7 +44,7 @@ local function BuildWindow()
         function(v) DB.messageDuration = v    end)
     GP_Lib:SetTooltip(slDur, "How many seconds the on-screen mana warning stays visible.")
 
-    -- ── Row 2: Font Size ──────────────────────────────────────────────────────
+    -- ── Row 2: Font Size (left) │ Debounce (right) ───────────────────────────
     local slFont = GP_Lib:AddSlider(win, "Font Size: %d", 16, 100,
         24, 128, 2,
         function()  return DB.fontSize end,
@@ -54,6 +54,15 @@ local function BuildWindow()
         end)
     GP_Lib:SetTooltip(slFont,
         "Size of the on-screen mana warning text. Applied immediately when you click Save.")
+
+    local slDeb = GP_Lib:AddSlider(win, "Repeat Cooldown: %ds", 300, 100,
+        0, 60, 1,
+        function()  return DB.debounceSeconds end,
+        function(v) DB.debounceSeconds = v    end)
+    GP_Lib:SetTooltip(slDeb,
+        "Minimum seconds before the SAME threshold can re-announce. " ..
+        "Crossing into a HIGHER threshold (e.g. Low → Critical) always fires immediately. " ..
+        "Set to 0 to disable.")
 
     -- ── Broadcast In ──────────────────────────────────────────────────────────
     GP_Lib:AddHeader(win, "Broadcast In", 16, 160)
