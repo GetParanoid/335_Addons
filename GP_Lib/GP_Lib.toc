@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: [ |cFFFFFFFFGP|r ] |cFF11A6ECLib|r
 ## Author: GetParanoid
-## Version: 1.0
+## Version: 1.1.0
 ## Notes: Shared UI utilities for GetParanoid addons.
 ## X-Category: GP
 

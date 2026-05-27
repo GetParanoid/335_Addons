@@ -472,7 +472,7 @@ DEFAULT_CHAT_FRAME:AddMessage(
 
 ## VersionCheck
 
-Peer-to-peer version discovery for my addons. Transport is a single hidden custom chat channel (`GPLibVC`) for realm-wide reach. If the player is at the server's 10-channel cap, version discovery is silently disabled for the session.
+Peer-to-peer version discovery for my addons. Transport is `SendAddonMessage` with prefix `GPLVC1`, scoped to `GUILD` / `PARTY` / `RAID` / `BATTLEGROUND`. Addon messages are invisible to non-addon users and don't consume a chat-channel slot.
 
 Version strings are read from each addon's TOC via `GetAddOnMetadata(name, "Version")`. Players only pass the folder name.
 

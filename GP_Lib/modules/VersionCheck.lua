@@ -1,14 +1,13 @@
 --[[
 GP_Lib :: modules/VersionCheck.lua
-Peer-to-peer version discovery for GetParanoid addons.
+Peer-to-peer version discovery for addons.
 
 Requires GP_Lib.lua (loaded first by the toc).
 
-Transport: a single hidden custom chat channel "GPLibVC" for realm-wide reach.
-If the player is at the server's 10-channel cap, version discovery is silently
-disabled for the session (no fallback to guild/party broadcasts by design).
+Transport: SendAddonMessage with prefix "GPLVC1", scoped to GUILD / PARTY /
+RAID / BATTLEGROUND.
 
-Usage from a consumer addon (e.g. LuaBugViewer):
+Usage from addons:
 
     GP_Lib.VersionCheck:Register("LuaBugViewer", {
         onNewerVersion = function(addonName, localVer, remoteVer, sender)
@@ -20,25 +19,45 @@ Version strings are read from each addon's TOC via GetAddOnMetadata(name, "Versi
 so you do not need to pass anything beyond the addon folder name.
 --]]
 
-local CHANNEL_NAME = "GPLibVC"
-local WIRE_TAG     = "GPLVC1"   -- magic prefix on every payload, gates parsing
+local PREFIX_NAME  = "GPLVC1"   -- SendAddonMessage prefix; receivers filter on it
 local CMD_HELLO    = "H"        -- "I am running <addon> at <version>"
 
--- Pacing knobs. Conservative so we never trip the ~10 msg/sec global chat throttle.
-local INITIAL_ANNOUNCE_DELAY  = 10  -- seconds after login before first broadcast
-local PER_ADDON_GAP           = 2   -- seconds between successive HELLOs on join
-local CHANNEL_JOIN_RETRY_GAP  = 5   -- seconds between attempts to (re)join channel
-local CHANNEL_JOIN_MAX_TRIES  = 6
+-- Pacing knobs. SendAddonMessage shares the ~10 msg/sec global chat throttle.
+local INITIAL_ANNOUNCE_DELAY  = 10   -- seconds after login before first broadcast
+local PER_MSG_GAP             = 2    -- seconds between successive sends
+local REBROADCAST_DEBOUNCE    = 3    -- coalesce roster-change re-announces
+
+-- Field caps and per-sender rate limit
+local MAX_ADDON_NAME          = 64
+local MAX_VERSION             = 32
+local PER_SENDER_COOLDOWN     = 60     -- seconds between accepted HELLOs from same sender/addon
+local SENDER_TABLE_PRUNE_AT   = 500    -- prune cooldown table once it exceeds this many entries
+local PER_ADDON_NOTIFY_COOLDOWN = 1800 -- seconds; max one onNewerVersion fire per addon regardless of sender
 
 
 local VC = {
-    registered     = {},  -- addonName -> { localVer, onNewerVersion }
-    seen           = {},  -- addonName -> highest remote version string observed
-    channelIndex   = nil, -- resolved index for CHANNEL_NAME, or nil if not joined
-    channelTries   = 0,
-    started        = false,
+    registered      = {},  -- addonName -> { localVer, onNewerVersion }
+    seen            = {},  -- addonName -> highest remote version string observed
+    lastFromSender  = {},  -- "sender\taddonName" -> elapsed of last accepted msg
+    lastNotifiedAt  = {},  -- addonName -> elapsed of last onNewerVersion fire
+    started         = false,
 }
 GP_Lib.VersionCheck = VC
+
+
+-- Validation --------------------------------------------------------------
+
+local function isValidAddonName(s)
+    return type(s) == "string"
+        and #s > 0 and #s <= MAX_ADDON_NAME
+        and string.find(s, "^[%w_%-]+$") ~= nil
+end
+
+local function isValidVersion(s)
+    return type(s) == "string"
+        and #s > 0 and #s <= MAX_VERSION
+        and string.find(s, "^[%w%.%-_]+$") ~= nil
+end
 
 
 -- Version compare ---------------------------------------------------------
@@ -67,28 +86,74 @@ end
 
 
 -- Wire format -------------------------------------------------------------
--- "GPLVC1:H:AddonName:1.2.3"
+-- Prefix "GPLVC1", message "H:AddonName:Version".
 
 local function encode(cmd, addonName, version)
-    return WIRE_TAG .. ":" .. cmd .. ":" .. addonName .. ":" .. (version or "")
+    return cmd .. ":" .. addonName .. ":" .. (version or "")
 end
 
-local function decode(payload)
-    if type(payload) ~= "string" then return nil end
-    if string.sub(payload, 1, #WIRE_TAG + 1) ~= WIRE_TAG .. ":" then return nil end
-    local _, _, cmd, addonName, version = string.find(payload, "^[^:]+:([^:]+):([^:]+):(.*)$")
+local function decode(message)
+    if type(message) ~= "string" then return nil end
+    local _, _, cmd, addonName, version = string.find(message, "^([^:]+):([^:]+):(.+)$")
     return cmd, addonName, version
+end
+
+
+-- OnUpdate ticker (no C_Timer on 3.3.5) -----------------------------------
+-- One shared frame drives delayed work: initial announce + debounced flush.
+
+local ticker  = CreateFrame("Frame")
+local pending = {}  -- list of { atSeconds = number, fn = function }
+local elapsed = 0
+
+local pendingScopes = {}  -- set: scope -> true (queued for next flush)
+local flushAt       = nil
+local lastGroupSize = 0   -- for "only re-announce when group GREW" check
+
+local function schedule(delay, fn)
+    pending[#pending + 1] = { atSeconds = elapsed + delay, fn = fn }
+end
+
+
+-- Sender cooldown table maintenance ---------------------------------------
+
+local function pruneSenderTable()
+    local cutoff = elapsed - PER_SENDER_COOLDOWN
+    for k, t in pairs(VC.lastFromSender) do
+        if t < cutoff then VC.lastFromSender[k] = nil end
+    end
+end
+
+local function countSenderTable()
+    local n = 0
+    for _ in pairs(VC.lastFromSender) do n = n + 1 end
+    return n
 end
 
 
 -- Inbound handling --------------------------------------------------------
 
-local function handleIncoming(payload, sender)
-    local cmd, addonName, remoteVer = decode(payload)
-    if not cmd or cmd ~= CMD_HELLO then return end
-    if not addonName or not remoteVer or remoteVer == "" then return end
+local function handleIncoming(message, sender)
+    if type(message) ~= "string" or type(sender) ~= "string" or sender == "" then return end
+
+    -- Ignore our own broadcasts (sender may carry "-Realm" on cross-realm BGs)
+    local me = UnitName("player")
+    if me and (sender == me or string.find(sender, "^" .. me .. "%-") ~= nil) then return end
+
+    local cmd, addonName, remoteVer = decode(message)
+    if cmd ~= CMD_HELLO then return end
+    if not isValidAddonName(addonName) then return end
+    if not isValidVersion(remoteVer) then return end
+
     local entry = VC.registered[addonName]
     if not entry then return end  -- we don't run this addon, ignore
+
+    -- Per-sender, per-addon cooldown: blocks walk-the-version-number spam.
+    local key = sender .. "\t" .. addonName
+    local last = VC.lastFromSender[key]
+    if last and (elapsed - last) < PER_SENDER_COOLDOWN then return end
+    VC.lastFromSender[key] = elapsed
+    if countSenderTable() > SENDER_TABLE_PRUNE_AT then pruneSenderTable() end
 
     if compareVersions(entry.localVer, remoteVer) >= 0 then return end
 
@@ -98,160 +163,143 @@ local function handleIncoming(payload, sender)
     if already and compareVersions(already, remoteVer) >= 0 then return end
     VC.seen[addonName] = remoteVer
 
+    -- Global per-addon notify cooldown
+    local lastNotify = VC.lastNotifiedAt[addonName]
+    if lastNotify and (elapsed - lastNotify) < PER_ADDON_NOTIFY_COOLDOWN then return end
+    VC.lastNotifiedAt[addonName] = elapsed
+
     if entry.onNewerVersion then
-        entry.onNewerVersion(addonName, entry.localVer, remoteVer, sender or "?")
+        entry.onNewerVersion(addonName, entry.localVer, remoteVer, sender)
     end
-end
-
-
--- Chat-frame suppression for our hidden channel ---------------------------
--- Returning true from a registered filter drops the message from chat display.
-
-local function isOurChannelMsg(channelName)
-    return type(channelName) == "string" and string.lower(channelName) == string.lower(CHANNEL_NAME)
-end
-
-local function chatMsgFilter(_, _, _, _, _, _, _, _, _, channelName)
-    if isOurChannelMsg(channelName) then return true end
-end
-
-local function chatNoticeFilter(_, _, _, _, _, _, _, _, _, channelName)
-    if isOurChannelMsg(channelName) then return true end
-end
-
-
--- Transport: custom chat channel ------------------------------------------
-
-local function isInChannel()
-    local idx = GetChannelName(CHANNEL_NAME)
-    return idx and idx > 0, idx
-end
-
-local function tryJoinChannel()
-    if VC.channelTries >= CHANNEL_JOIN_MAX_TRIES then return false end
-    VC.channelTries = VC.channelTries + 1
-    local joined, idx = isInChannel()
-    if joined then
-        VC.channelIndex = idx
-        return true
-    end
-    JoinTemporaryChannel(CHANNEL_NAME)
-    -- Index is not guaranteed available immediately; resolved lazily on send
-    -- or when CHANNEL_UI_UPDATE fires.
-    return false
-end
-
-local function refreshChannelIndex()
-    local joined, idx = isInChannel()
-    VC.channelIndex = joined and idx or nil
 end
 
 
 -- Sending -----------------------------------------------------------------
 
-local function sendViaChannel(payload)
-    refreshChannelIndex()
-    if not VC.channelIndex then return false end
-    SendChatMessage(payload, "CHANNEL", nil, VC.channelIndex)
-    return true
+local function currentGroupScope()
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then return "RAID" end
+    if GetNumPartyMembers and GetNumPartyMembers() > 0 then return "PARTY" end
+    return nil
 end
 
-local function broadcast(payload)
-    sendViaChannel(payload)
+local function currentGroupSize()
+    local numRaid = GetNumRaidMembers and GetNumRaidMembers() or 0
+    if numRaid > 0 then return numRaid end
+    local numParty = GetNumPartyMembers and GetNumPartyMembers() or 0
+    return numParty > 0 and (numParty + 1) or 0  -- +1 for self when in a 5-man
+end
+
+local function inBattleground()
+    if not IsInInstance then return false end
+    local _, instanceType = IsInInstance()
+    return instanceType == "pvp" or instanceType == "arena"
+end
+
+local function scopeIsAvailable(scope)
+    if scope == "GUILD"        then return IsInGuild and IsInGuild()       end
+    if scope == "PARTY"        then return GetNumPartyMembers and GetNumPartyMembers() > 0 end
+    if scope == "RAID"         then return GetNumRaidMembers  and GetNumRaidMembers()  > 0 end
+    if scope == "BATTLEGROUND" then return inBattleground() end
+    return false
 end
 
 
--- OnUpdate ticker (no C_Timer on 3.3.5) -----------------------------------
--- One shared frame drives delayed work: initial announce + periodic rejoin.
+-- Flush queued scopes: send one HELLO per registered addon to each pending
+-- scope that is still available, spaced out so we don't trip the chat throttle.
+local function flushPending()
+    local scopes = {}
+    for s in pairs(pendingScopes) do
+        if scopeIsAvailable(s) then scopes[#scopes + 1] = s end
+        pendingScopes[s] = nil
+    end
+    if #scopes == 0 then return end
 
-local ticker = CreateFrame("Frame")
-local pending = {}  -- list of { atSeconds = number, fn = function }
-local elapsed = 0
-
-ticker:SetScript("OnUpdate", function(_, delta)
-    elapsed = elapsed + delta
-    if #pending == 0 then return end
-    local i = 1
-    while i <= #pending do
-        local job = pending[i]
-        if elapsed >= job.atSeconds then
-            table.remove(pending, i)
-            job.fn()
-        else
+    local i = 0
+    for name, entry in pairs(VC.registered) do
+        for _, scope in ipairs(scopes) do
+            local addonName, version, dist = name, entry.localVer, scope
+            schedule(i * PER_MSG_GAP, function()
+                if scopeIsAvailable(dist) then
+                    SendAddonMessage(PREFIX_NAME, encode(CMD_HELLO, addonName, version), dist)
+                end
+            end)
             i = i + 1
         end
     end
-end)
+end
 
-local function schedule(delay, fn)
-    pending[#pending + 1] = { atSeconds = elapsed + delay, fn = fn }
+local function queueScope(scope)
+    if not scope then return end
+    pendingScopes[scope] = true
+    flushAt = elapsed + REBROADCAST_DEBOUNCE
+end
+
+local function queueAllAvailable()
+    if IsInGuild and IsInGuild() then queueScope("GUILD") end
+    queueScope(currentGroupScope())
+    if inBattleground() then queueScope("BATTLEGROUND") end
 end
 
 
--- Initial announce: one HELLO per registered addon, staggered.
-local function announceAll()
-    local i = 0
-    for name, entry in pairs(VC.registered) do
-        local localName, localEntry = name, entry
-        schedule(i * PER_ADDON_GAP, function()
-            broadcast(encode(CMD_HELLO, localName, localEntry.localVer))
-        end)
-        i = i + 1
+ticker:SetScript("OnUpdate", function(_, delta)
+    elapsed = elapsed + delta
+
+    if #pending > 0 then
+        local i = 1
+        while i <= #pending do
+            local job = pending[i]
+            if elapsed >= job.atSeconds then
+                table.remove(pending, i)
+                job.fn()
+            else
+                i = i + 1
+            end
+        end
     end
-end
+
+    if flushAt and elapsed >= flushAt then
+        flushAt = nil
+        flushPending()
+    end
+end)
 
 
 -- Event handling ----------------------------------------------------------
 
 local events = CreateFrame("Frame")
 
-events:SetScript("OnEvent", function(self, event, ...)
+events:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_LOGIN" then
         if VC.started then return end
         VC.started = true
+        schedule(INITIAL_ANNOUNCE_DELAY, queueAllAvailable)
 
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL",        chatMsgFilter)
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", chatNoticeFilter)
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_JOIN",   chatNoticeFilter)
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_LEAVE",  chatNoticeFilter)
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_LIST",   chatNoticeFilter)
+    elseif event == "CHAT_MSG_ADDON" then
+        local prefix, message, _, sender = ...
+        if prefix ~= PREFIX_NAME then return end
+        handleIncoming(message, sender)
 
-        tryJoinChannel()
-        schedule(INITIAL_ANNOUNCE_DELAY, announceAll)
+    elseif event == "PLAYER_GUILD_UPDATE" then
+        if IsInGuild and IsInGuild() then queueScope("GUILD") end
 
-    elseif event == "CHANNEL_UI_UPDATE" then
-        refreshChannelIndex()
-        if not VC.channelIndex then
-            schedule(CHANNEL_JOIN_RETRY_GAP, tryJoinChannel)
+    elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
+        local size = currentGroupSize()
+        if size > lastGroupSize then
+            queueScope(currentGroupScope())
         end
+        lastGroupSize = size
 
-    elseif event == "CHAT_MSG_CHANNEL_NOTICE" then
-        -- arg1 = notice type ("YOU_LEFT", "YOU_JOINED", ...), arg9 = channel name
-        local noticeType = ...
-        local chName = select(9, ...)
-        if isOurChannelMsg(chName) then
-            if noticeType == "YOU_LEFT" then
-                VC.channelIndex = nil
-                schedule(CHANNEL_JOIN_RETRY_GAP, tryJoinChannel)
-            elseif noticeType == "YOU_JOINED" or noticeType == "YOU_CHANGED" then
-                refreshChannelIndex()
-            end
-        end
-
-    elseif event == "CHAT_MSG_CHANNEL" then
-        -- arg1 = text, arg2 = sender, arg9 = channel name
-        local text, sender = ...
-        local chName = select(9, ...)
-        if isOurChannelMsg(chName) then
-            handleIncoming(text, sender)
-        end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if inBattleground() then queueScope("BATTLEGROUND") end
     end
 end)
 
 events:RegisterEvent("PLAYER_LOGIN")
-events:RegisterEvent("CHANNEL_UI_UPDATE")
-events:RegisterEvent("CHAT_MSG_CHANNEL")
-events:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
+events:RegisterEvent("CHAT_MSG_ADDON")
+events:RegisterEvent("PLAYER_GUILD_UPDATE")
+events:RegisterEvent("PARTY_MEMBERS_CHANGED")
+events:RegisterEvent("RAID_ROSTER_UPDATE")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 
 -- Public API --------------------------------------------------------------
@@ -262,6 +310,7 @@ events:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 ---@param addonName string  Folder name of the addon (matches its TOC filename)
 ---@param opts table|nil    { onNewerVersion = function(addon, local, remote, sender) }
 function VC:Register(addonName, opts)
+    if not isValidAddonName(addonName) then return end
     opts = opts or {}
     local localVer = GetAddOnMetadata(addonName, "Version") or "0"
     self.registered[addonName] = {
@@ -270,11 +319,10 @@ function VC:Register(addonName, opts)
     }
 
     -- If we registered after PLAYER_LOGIN already fired (late-loading addon),
-    -- queue an announce for this one addon so peers learn about us promptly.
+    -- queue an announce so peers learn about us promptly. Multiple late
+    -- registrations coalesce via the debounced flush.
     if self.started then
-        schedule(INITIAL_ANNOUNCE_DELAY, function()
-            broadcast(encode(CMD_HELLO, addonName, localVer))
-        end)
+        schedule(INITIAL_ANNOUNCE_DELAY, queueAllAvailable)
     end
 end
 
