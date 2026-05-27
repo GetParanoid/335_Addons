@@ -111,7 +111,8 @@ local function OnManaChanged()
         if isEscalation or debounceReady then
             local entry = OutOfManaDB.thresholds[tripped]
             ShowMessage(entry.msg)
-            if OutOfManaDB.broadcastIn[instanceType] then
+            if OutOfManaDB.broadcastIn[instanceType]
+               and not UnitIsDeadOrGhost("player") then
                 SendChatMessage(entry.msg, OutOfManaDB.chatChannel)
             end
             lastAnnouncedLvl = tripped
