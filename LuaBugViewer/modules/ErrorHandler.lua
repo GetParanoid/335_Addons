@@ -23,6 +23,28 @@ local function NowSeconds()
 end
 
 
+-- Tidies a raw debugstack() string for display:
+--   1. Drops our own capture-wrapper frames sitting at the top of the trace
+--      (the seterrorhandler / OnEvent closures), so the trace starts at the
+--      real error origin instead of inside LuaBugViewer.
+--   2. Strips the "...Interface\AddOns\" prefix from each frame so the addon
+--      name leads every line and WoW's "..." truncation stops mattering.
+local function CleanStack(stack)
+    if not stack or stack == "" then return "" end
+    local lines, skipping = {}, true
+    for line in string.gmatch(stack, "[^\n]+") do
+        if skipping and string.find(line, "LuaBugViewer", 1, true) then
+            -- skip: one of our own wrapper frames at the top
+        else
+            skipping = false
+            line = string.gsub(line, "[^%s<`]*AddOns\\", "")
+            table.insert(lines, line)
+        end
+    end
+    return table.concat(lines, "\n")
+end
+
+
 function M:Init()
     self._windowStart = NowSeconds()
     self._windowCount = 0
@@ -31,7 +53,7 @@ function M:Init()
 
     local previous = geterrorhandler()
     seterrorhandler(function(err)
-        M:Grab(err)
+        M:Grab(err, "lua")
         if previous then return previous(err) end
     end)
 
@@ -41,13 +63,15 @@ function M:Init()
     eventFrame:SetScript("OnEvent", function(self, event, addon, func)
         local message = string.format("[%s] AddOn '%s' tried to call protected function '%s'.",
                                       event, tostring(addon), tostring(func))
-        M:Grab(message)
+        local kind = (event == "ADDON_ACTION_FORBIDDEN") and "forbidden" or "blocked"
+        M:Grab(message, kind)
     end)
 end
 
 
-function M:Grab(err)
-    err = tostring(err or "")
+function M:Grab(err, kind)
+    err  = tostring(err or "")
+    kind = kind or "lua"
 
     -- Recursion guard: if we're already inside Grab (e.g. SessionLog or an
     -- emitted listener errored), bail out cleanly. The original error handler
@@ -80,10 +104,11 @@ function M:Grab(err)
 
     self._inGrab = true
     -- debugstack(2) skips this function frame so the trace starts at the
-    -- error origin. debuglocals at the same depth gives us locals near the
-    -- failure site (still includes our own locals near the top — acceptable).
-    local stack  = debugstack(2)
+    -- error origin. CleanStack then trims our own wrapper frames off the top
+    -- and tidies the AddOns paths. debuglocals at the same depth gives us
+    -- locals near the failure site.
+    local stack  = CleanStack(debugstack(2))
     local locals = debuglocals and debuglocals(2) or ""
-    LBV.modules.SessionLog:Add(err, stack, locals)
+    LBV.modules.SessionLog:Add(err, stack, locals, kind)
     self._inGrab = false
 end

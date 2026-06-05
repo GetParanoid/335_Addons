@@ -17,12 +17,19 @@ local M = {}
 LBV.modules.SessionLog = M
 
 
-local function DedupKey(message)
-    -- First line of the message + a 60-char prefix is usually enough to
+local function DedupKey(message, kind)
+    -- First line of the message + a 200-char prefix is usually enough to
     -- distinguish errors without being fooled by line numbers that move
     -- around as code changes.
     local firstLine = string.match(message or "", "^([^\n]*)") or ""
-    return string.sub(firstLine, 1, 200)
+    local key = string.sub(firstLine, 1, 200)
+    -- Blocked/forbidden actions name a specific frame (e.g. CompactRaidFrame5);
+    -- collapse the trailing index so a whole raid's worth of identical blocks
+    -- folds into one "x40" row instead of flooding the cap.
+    if kind == "blocked" or kind == "forbidden" then
+        key = string.gsub(key, "%d+", "#")
+    end
+    return key
 end
 
 
@@ -34,8 +41,9 @@ function M:Init()
 end
 
 
-function M:Add(message, stack, locals)
-    local key = DedupKey(message)
+function M:Add(message, stack, locals, kind)
+    kind = kind or "lua"
+    local key = DedupKey(message, kind)
     local existing = self.byKey[key]
 
     if existing then
@@ -50,6 +58,7 @@ function M:Add(message, stack, locals)
         message   = message or "",
         stack     = stack or "",
         locals    = locals or "",
+        kind      = kind,
         time      = time(),
         lastTime  = time(),
         count     = 1,
@@ -65,7 +74,7 @@ function M:Add(message, stack, locals)
     local cap = (LBV.db and LBV.db.maxStored) or 100
     while #self.errors > cap do
         local victim = table.remove(self.errors, 1)
-        self.byKey[DedupKey(victim.message)] = nil
+        self.byKey[DedupKey(victim.message, victim.kind)] = nil
     end
 
     LBV:Emit("OnNewError", entry)
