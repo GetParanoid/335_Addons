@@ -13,10 +13,24 @@ Slash: /wcic   - toggles the results window manually
 local MAX_ROWS   = 22
 local ROW_HEIGHT = 20
 
+-- Every tradeskill that opens a TradeSkill window in 3.3.5. Used to pre-populate
+-- the settings list so a profession can be disabled before it's ever opened.
+-- Names match GetTradeSkillLine() on an enUS client; any other names the client
+-- actually reports are merged in at runtime from WhatCanICraftDB.seenProfessions.
+local PROFESSIONS = {
+    "Alchemy", "Blacksmithing", "Cooking", "Enchanting", "Engineering",
+    "First Aid", "Inscription", "Jewelcrafting", "Leatherworking",
+    "Mining", "Tailoring",
+}
+
 
 -- DEFAULTS --------------------------------------------------------------------
 
-local DEFAULTS = {}
+local DEFAULTS = {
+    hidden              = {},  -- [recipeName] = true   recipes to omit from the list
+    disabledProfessions = {},  -- [profName]   = true   professions to not auto-show for
+    seenProfessions     = {},  -- [profName]   = true   professions opened (fills config)
+}
 
 
 -- STATE -----------------------------------------------------------------------
@@ -56,7 +70,8 @@ local function ComputeCraftable(have)
     local n = GetNumTradeSkills()
     for i = 1, n do
         local name, skillType = GetTradeSkillInfo(i)
-        if name and skillType and skillType ~= "header" then
+        if name and skillType and skillType ~= "header"
+           and not WhatCanICraftDB.hidden[name] then
             local numReagents = GetTradeSkillNumReagents(i)
             local maxCraftable
             local reagentIDs = {}
@@ -90,7 +105,20 @@ end
 
 -- UI --------------------------------------------------------------------------
 
-local Render  -- forward declaration (referenced inside CreateResultFrame's scroll handler)
+-- Forward declarations (defined later, referenced by UI callbacks below).
+local Render      -- referenced inside CreateResultFrame's scroll handler
+local Scan        -- referenced by the per-row hide button and config window
+local Hide        -- referenced by the config window
+local ShowConfig  -- the settings window, defined after the driver
+
+-- Hide a recipe from the list and re-scan so it disappears immediately.
+local function HideRecipe(recipeName)
+    if not recipeName then return end
+    WhatCanICraftDB.hidden[recipeName] = true
+    DEFAULT_CHAT_FRAME:AddMessage(string.format(
+        "|cFF11A6ECWhatCanICraft|r: hid %s |cFF808080(unhide via /wcic settings)|r", recipeName))
+    Scan()
+end
 
 local function ClickRow(recipeName)
     if not tradeOpen or not recipeName then return end
@@ -206,10 +234,34 @@ local function CreateResultFrame()
         hl:SetAllPoints(row)
 
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        text:SetAllPoints(row)
+        text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        text:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -16, 0)  -- reserve room for the "x"
         text:SetJustifyH("LEFT")
         text:SetJustifyV("MIDDLE")
         row.text = text
+
+        -- Per-row hide button: a small "x" shown only while the row is hovered.
+        local hide = CreateFrame("Button", nil, row)
+        hide:SetWidth(16)
+        hide:SetHeight(16)
+        hide:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        hide:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+        hide:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down")
+        hide:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
+        hide:Hide()
+        hide:SetScript("OnClick", function(self)
+            HideRecipe(self:GetParent().recipeName)
+        end)
+        -- Keep the "x" visible while hovering either the row or the button itself.
+        local function ShowHide() if row.recipeName then hide:Show() end end
+        local function MaybeHide()
+            if not (row:IsMouseOver() or hide:IsMouseOver()) then hide:Hide() end
+        end
+        row:HookScript("OnEnter", ShowHide)
+        row:HookScript("OnLeave", MaybeHide)
+        hide:SetScript("OnEnter", ShowHide)
+        hide:SetScript("OnLeave", MaybeHide)
+        row.hideBtn = hide
 
         row:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
@@ -279,7 +331,7 @@ end
 
 -- DRIVER ----------------------------------------------------------------------
 
-local function Scan()
+Scan = function()
     if not tradeOpen or scanning then return end
     scanning = true
 
@@ -297,7 +349,7 @@ local function Scan()
     Render(results, skill)
 end
 
-local function Hide()
+Hide = function()
     if resultFrame then resultFrame:Hide() end
 end
 
@@ -324,7 +376,15 @@ addon:SetScript("OnEvent", function(self, event)
 
     elseif event == "TRADE_SKILL_SHOW" then
         tradeOpen = true
-        Scan()
+        local prof = GetTradeSkillLine()
+        if prof and prof ~= "UNKNOWN" then
+            WhatCanICraftDB.seenProfessions[prof] = true
+        end
+        if prof and WhatCanICraftDB.disabledProfessions[prof] then
+            Hide()  -- auto-show suppressed for this profession (still toggleable via /wcic)
+        else
+            Scan()
+        end
 
     elseif event == "TRADE_SKILL_CLOSE" then
         tradeOpen = false
@@ -345,12 +405,106 @@ addon:SetScript("OnEvent", function(self, event)
 end)
 
 
+-- CONFIG ----------------------------------------------------------------------
+
+local configWin  -- built lazily on first /wcic config
+
+-- Sorted array of { name = key } from a [key]=true set, optionally filtered.
+local function SortedEntries(set)
+    local out = {}
+    for key in pairs(set) do out[#out + 1] = { name = key } end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+-- All known professions plus any the client actually reported, deduped + sorted.
+-- Pre-seeding the full list lets a profession be disabled before it's ever opened.
+local function ProfessionEntries()
+    local seen = {}
+    for _, name in ipairs(PROFESSIONS)             do seen[name] = true end
+    for name   in pairs(WhatCanICraftDB.seenProfessions) do seen[name] = true end
+    return SortedEntries(seen)
+end
+
+local function BuildConfigWindow()
+    local win = GP_Lib:CreateWindow("WhatCanICraft Settings", 480, 440)
+
+    GP_Lib:AddHeader(win, "Disabled Professions", 8, 4)
+    GP_Lib:AddLabel(win, "Click to toggle auto-show", 8, 30)
+    GP_Lib:AddHeader(win, "Hidden Recipes", 248, 4)
+    GP_Lib:AddLabel(win, "Click to unhide", 248, 30)
+
+    local function MakeRow(row)
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.text:SetJustifyH("LEFT")
+    end
+
+    local profList = GP_Lib:CreateScrollList(win._content, {
+        width = 210, height = 300, rowHeight = 18,
+        buildRow  = MakeRow,
+        updateRow = function(row, _, entry)
+            if WhatCanICraftDB.disabledProfessions[entry.name] then
+                row.text:SetText("|cFF808080" .. entry.name .. "  (hidden)|r")
+            else
+                row.text:SetText(entry.name)
+            end
+        end,
+        onRowClick = function(_, entry)
+            local p = entry.name
+            WhatCanICraftDB.disabledProfessions[p] = not WhatCanICraftDB.disabledProfessions[p]
+                                                     and true or nil
+            win._profList:Refresh()
+            -- Reflect the change live if this is the profession open right now.
+            if tradeOpen and GetTradeSkillLine() == p then
+                if WhatCanICraftDB.disabledProfessions[p] then Hide() else Scan() end
+            end
+        end,
+    })
+    profList:SetPoint("TOPLEFT", win._content, "TOPLEFT", 8, -52)
+    win._profList = profList
+
+    local hiddenList = GP_Lib:CreateScrollList(win._content, {
+        width = 210, height = 300, rowHeight = 18,
+        buildRow  = MakeRow,
+        updateRow = function(row, _, entry) row.text:SetText(entry.name) end,
+        onRowClick = function(_, entry)
+            WhatCanICraftDB.hidden[entry.name] = nil
+            win._hiddenList:SetData(SortedEntries(WhatCanICraftDB.hidden))
+            if tradeOpen then Scan() end  -- it may reappear in the panel
+        end,
+    })
+    hiddenList:SetPoint("TOPLEFT", win._content, "TOPLEFT", 248, -52)
+    win._hiddenList = hiddenList
+
+    -- Repopulate both lists from the DB every time the window opens.
+    win:HookScript("OnShow", function(self)
+        self._profList:SetData(ProfessionEntries())
+        self._hiddenList:SetData(SortedEntries(WhatCanICraftDB.hidden))
+    end)
+
+    return win
+end
+
+ShowConfig = function()
+    if not configWin then configWin = BuildConfigWindow() end
+    if configWin:IsShown() then configWin:Hide() else configWin:Show() end
+end
+
+
 -- SLASH -----------------------------------------------------------------------
 
 SLASH_WHATCANICRAFT1 = "/wcic"
-SlashCmdList["WHATCANICRAFT"] = function()
+SlashCmdList["WHATCANICRAFT"] = function(msg)
+    local arg = (msg or ""):lower():match("^%s*(%S*)")
+    if arg == "config" or arg == "options" or arg == "settings" then
+        ShowConfig()
+        return
+    end
+
     if not tradeOpen then
-        DEFAULT_CHAT_FRAME:AddMessage("|cFF11A6ECWhatCanICraft|r: open a tradeskill window first.")
+        DEFAULT_CHAT_FRAME:AddMessage("|cFF11A6ECWhatCanICraft|r: open a tradeskill window first.  Use |cFFFFD100/wcic settings|r for settings.")
         return
     end
     if resultFrame and resultFrame:IsShown() then

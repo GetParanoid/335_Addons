@@ -10,13 +10,30 @@ When you open any profession window (Alchemy, Cooking, Blacksmithing, ...), a sm
 - Works for any tradeskill.
 - **Left-click** a row to jump to that recipe in the profession window.
 - **Right-click** a row (with the bank open) to pull all matching reagent stacks from the bank into your bags, so you can craft without manually shuffling items.
+- **Hover a row** and click the small **x** at its right edge to hide a recipe you never craft.
 - Window is movable; position is saved between sessions.
+
+## Filtering
+
+Don't want to see a recipe (e.g. *Endless Mana Potion*) cluttering the list? Hover its
+row and click the **x** to hide it. Don't want the panel to appear for a profession at
+all (e.g. Enchanting)? Disable it per-profession in the settings window.
+
+Open the settings with **`/wcic settings`**:
+
+- **Disabled Professions** — lists every WoW profession (all enabled by default). Click
+  one to toggle whether the panel auto-shows for it. Disabled professions never auto-show,
+  but you can still force the panel open for the current one with bare `/wcic`.
+- **Hidden Recipes** — every recipe you've hidden. Click one to unhide it.
+
+Both lists are account-wide and persist between sessions. Changes apply immediately.
 
 ## Slash commands
 
 | Command | Action |
 |---|---|
 | `/wcic` | Toggle the results window (only works while a profession window is open) |
+| `/wcic settings` | Open the settings window (manage hidden recipes & disabled professions) |
 
 ## Download
 
